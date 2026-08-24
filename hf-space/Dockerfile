@@ -20,6 +20,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #
 # Gruplar:
 #   1) Çalışma zamanı/araçlar : python, curl, git, arşivleyiciler
+#      NOT: 'bsdtar' Ubuntu'da bağımsız bir paket ADI DEĞİL — komut
+#      'libarchive-tools' paketinden gelir. 'bsdtar' yazmak noble'da
+#      "Unable to locate package" ile build'i düşürür.
 #   2) Xvfb + görüntü         : headless kurulum sihirbazları ve smoke test için
 #   3) Wine'ın unix modülleri : lib/wine/x86_64-unix/*.so bunları dlopen eder.
 #      (wine binary'sinin kendisi sadece libc ister, ama winex11.drv/winealsa
@@ -27,7 +30,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl wget git jq \
         python3 python3-pip python3-venv \
-        zstd xz-utils zip unzip p7zip-full cabextract bsdtar \
+        zstd xz-utils zip unzip p7zip-full cabextract \
+        libarchive-tools \
         xvfb x11-utils x11-xserver-utils xauth imagemagick \
         libx11-6 libxext6 libxrender1 libxrandr2 libxi6 libxcursor1 \
         libxcomposite1 libxinerama1 libxxf86vm1 libxfixes3 libxcb1 \
