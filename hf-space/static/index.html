@@ -169,6 +169,21 @@
         <span>Bitince APK'yı da derle</span>
       </label>
       <small class="hint" id="apkHint"></small>
+      <div class="row">
+        <label class="check">
+          <input id="diagnostics" type="checkbox" checked />
+          <span>Tanılama logu topla</span>
+        </label>
+        <label class="narrow">
+          <span>Süre (sn)</span>
+          <input id="diagnostics_seconds" type="number" value="60" min="10" max="600" />
+        </label>
+      </div>
+      <small class="hint">
+        Açıkken oyun başlatılırken Wine/Box64 çıktısı toplanır ve süre sonunda
+        telefonun <code>İndirilenler</code> klasörüne yazılır. Oyun içi menüde
+        canlı log da görünür. Dağıtım sürümünde kapat.
+      </small>
       <small class="hint">
         Derleme arka planda sürer — bu sayfayı kapatabilirsin. Geri
         döndüğünde log ve çıktılar burada bekliyor olur.

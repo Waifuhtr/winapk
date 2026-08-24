@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.preference.PreferenceManager
 import com.winlator.R
 import com.winlator.XServerDisplayActivity
 import kotlinx.coroutines.launch
@@ -141,6 +142,8 @@ class GameLauncherActivity : AppCompatActivity() {
         if (launched) return
         launched = true
 
+        applyDiagnosticsPreferences()
+
         val intent = Intent(this, XServerDisplayActivity::class.java).apply {
             putExtra("container_id", target.containerId)
             putExtra("shortcut_path", target.shortcutPath)
@@ -152,6 +155,27 @@ class GameLauncherActivity : AppCompatActivity() {
         // legacy depolama davranisina bagimli) eski API dogru olan.
         @Suppress("DEPRECATION")
         overridePendingTransition(0, 0)
+    }
+
+    /**
+     * Tanılama açıksa Wine'ın konuşmasını sağlar.
+     *
+     * XServerDisplayActivity, WINEDEBUG'u şuna göre belirliyor:
+     *     enableWineDebug ? "+warn,+err,+fixme" : "-all"
+     * Yani bu tercih kapalıyken Wine neredeyse hiçbir şey yazmıyor ve
+     * "Starting up..." ekranında takılırsan elinde hiçbir ipucu olmuyor.
+     *
+     * Aynı tercih ayrıca DebugDialog'un kaydedilmesini ve oyun içi menüdeki
+     * "Logs" öğesinin görünür olmasını sağlıyor. Tercihi BURADA, oyun
+     * aktivitesi başlamadan önce yazmak zorundayız; o aktivite değeri
+     * onCreate'in başında okuyor.
+     */
+    private fun applyDiagnosticsPreferences() {
+        val config = GamePortConfig.get(this)
+        if (!config.diagnosticsEnabled) return
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+            .putBoolean("enable_wine_debug", true)
+            .apply()
     }
 
     private companion object {

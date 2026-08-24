@@ -468,6 +468,8 @@ document.addEventListener("DOMContentLoaded", () => {
       smoke_test_seconds: parseInt($("smoke_test_seconds").value, 10) || 25,
       zstd_level: parseInt($("zstd_level").value, 10) || 19,
       build_apk: $("build_apk").checked && !$("build_apk").disabled,
+      diagnostics: $("diagnostics").checked,
+      diagnostics_seconds: parseInt($("diagnostics_seconds").value, 10) || 60,
     };
 
     $("summary").classList.add("hidden");

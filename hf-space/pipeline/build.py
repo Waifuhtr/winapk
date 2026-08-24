@@ -390,6 +390,10 @@ def _build_game_config(cfg, detected, exec_dos, exec_dir_dos, exec_file,
             "audioDriver": cfg.audio_driver,
             "screenSize": cfg.screen_size,
         },
+        "diagnostics": {
+            "enabled": cfg.diagnostics,
+            "seconds": cfg.diagnostics_seconds,
+        },
         "payload": {
             "file": "game_payload.tzst",
             "changedCount": payload_stats["changed_count"],

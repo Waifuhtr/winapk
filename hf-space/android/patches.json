@@ -4,10 +4,10 @@
     {
       "id": "gameport-menu",
       "file": "app/src/main/java/com/winlator/XServerDisplayActivity.java",
-      "why": "Oyun ici cekmece menusunu sadelestir: kullanici editor/ayar ekranlarina ulasamasin. Menu ogeleri gizlenir, silinmez.",
+      "why": "Oyun ici cekmece menusunu sadelestirir ve tanilama toplayicisini baslatir. Toplayicinin BURADA baslamasi sart: ProcessHelper, kayitli debug callback yoksa guest surec ciktisini /dev/null'a yonlendiriyor, ve o surec onCreate'in ilerisinde baslatiliyor.",
       "anchor": "        menu.findItem(R.id.menu_item_logs).setVisible(enableLogs);",
-      "replacement": "        menu.findItem(R.id.menu_item_logs).setVisible(enableLogs);\n        com.winlator.gameport.GamePortMenu.apply(menu);",
-      "marker": "GamePortMenu.apply(menu)"
+      "replacement": "        menu.findItem(R.id.menu_item_logs).setVisible(enableLogs);\n        com.winlator.gameport.GamePortMenu.apply(menu);\n        com.winlator.gameport.GamePortDiagnostics.start(this);",
+      "marker": "GamePortDiagnostics.start(this)"
     },
     {
       "id": "fileprovider-authority",

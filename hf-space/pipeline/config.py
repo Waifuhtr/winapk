@@ -140,6 +140,12 @@ class BuildConfig:
     force_fullscreen: bool = True
     controls_profile: str = "1"
 
+    # --- tanılama ---
+    # Açıkken APK, oyun başlatılırken Wine/Box64 çıktısını toplayıp süre
+    # sonunda İndirilenler klasörüne yazar. Dağıtım sürümünde kapat.
+    diagnostics: bool = True
+    diagnostics_seconds: int = 60
+
     # --- APK derlemesi (AŞAMA B, Space içinde) ---
     build_apk: bool = True
     controls_icp: str = ""              # opsiyonel .icp profil dosyası yolu
@@ -161,6 +167,7 @@ class BuildConfig:
             )
         self.zstd_level = max(1, min(19, int(self.zstd_level)))
         self.smoke_test_seconds = max(5, min(180, int(self.smoke_test_seconds)))
+        self.diagnostics_seconds = max(10, min(600, int(self.diagnostics_seconds)))
         if self.app_id != BAKED_APP_ID:
             # Farklı bir applicationId, rootfs'in yeniden paketlenmesini gerektirir.
             self.repack_rootfs = True

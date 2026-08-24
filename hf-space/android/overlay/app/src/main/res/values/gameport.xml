@@ -10,4 +10,6 @@
     <string name="gameport_failed">Başlatılamadı</string>
     <string name="gameport_percent">%1$d%%</string>
     <string name="gameport_permission_required">Devam etmek için depolama izni gerekiyor.</string>
+    <string name="gameport_log_saved">Tanılama logu kaydedildi: %1$s</string>
+    <string name="gameport_log_failed">Tanılama logu kaydedilemedi (depolama izni?).</string>
 </resources>

@@ -18,6 +18,8 @@ class GamePortConfig private constructor(root: JSONObject) {
     private val containerNode: JSONObject = root.optJSONObject("container") ?: JSONObject()
     private val shortcutNode: JSONObject = root.optJSONObject("shortcut") ?: JSONObject()
     private val payloadNode: JSONObject = root.optJSONObject("payload") ?: JSONObject()
+    private val diagnosticsNode: JSONObject =
+        root.optJSONObject("diagnostics") ?: JSONObject()
 
     val schemaVersion: Int = root.optInt("schemaVersion", 1)
     val appLabel: String = root.optString("appLabel", "Game")
@@ -51,6 +53,12 @@ class GamePortConfig private constructor(root: JSONObject) {
     val execArgs: String = shortcutNode.optString("execArgs", "")
     val forceFullscreen: String = shortcutNode.optString("forceFullscreen", "1")
     val controlsProfile: String = shortcutNode.optString("controlsProfile", "")
+
+    // --- tanılama ---
+    // Açıkken oyun başlatılırken Wine/Box64 çıktısı toplanır ve süre sonunda
+    // İndirilenler klasörüne yazılır. Dağıtım sürümünde kapatılmalı.
+    val diagnosticsEnabled: Boolean = diagnosticsNode.optBoolean("enabled", false)
+    val diagnosticsSeconds: Int = diagnosticsNode.optInt("seconds", 60).coerceIn(10, 600)
 
     // --- payload ---
     val payloadFile: String = payloadNode.optString("file", "game_payload.tzst")

@@ -29,7 +29,15 @@ object GamePortMenu {
     fun apply(menu: Menu) {
         for (index in 0 until menu.size()) {
             val item = menu.getItem(index)
-            item.isVisible = KEEP.any { it == item.itemId }
+            item.isVisible = if (item.itemId == R.id.menu_item_logs) {
+                // Logs'a DOKUNMUYORUZ: upstream bunu enable_wine_debug
+                // tercihine gore ayarladi. Tanilama acikken gorunur olmali
+                // (canli Wine ciktisi), kapaliyken zaten gizli -- ustelik
+                // debugDialog null oldugu icin tiklanirsa cokerdi.
+                item.isVisible
+            } else {
+                KEEP.any { it == item.itemId }
+            }
         }
     }
 }
