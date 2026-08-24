@@ -75,6 +75,12 @@ fark alınıyor:
 | Tam prefix | 1717 | ~313 MB |
 | **Delta** | **97** | **9.8 MB** |
 
+Aynı mantık `rootfs.tzst` için de geçerli: yeniden paketlerken `home/`
+(container) ve `tmp/` (winetricks önbelleği) hariç tutulur — upstream'in
+kendi arşivinde de bunlar boş dizindir. Aksi halde oyun APK'ya **iki kez**
+girer. Ölçüm: hariç tutmadan 176.5 MB, tutunca **62.9 MB**
+(upstream referansı: 62.2 MB).
+
 ---
 
 ## applicationId kısıtı

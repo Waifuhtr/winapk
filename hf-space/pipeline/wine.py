@@ -205,15 +205,66 @@ def install_winetricks(root: str, verbs: list[str], bus: EventBus, *, timeout: i
             bus, env=env, timeout=timeout, check=False,
         )
         wineserver_wait(root, bus)
+
         if code == 0:
             installed.append(verb)
             bus.ok(f"{verb} kuruldu.")
+            continue
+
+        # Cikis kodu 0 degil ama is bitmis olabilir: winetricks bircok verb'de
+        # DLL'leri once cabextract ile prefix'e KOPYALIYOR, sonra resmi
+        # installer'i calistiriyor. Headless Xvfb'de o son adim X hatasiyla
+        # dusebiliyor (BadWindow) -- oysa DLL'ler coktan yerine konmus olur.
+        # Bu yuzden cikis kodunu tek basina karar olarak kullanmiyoruz.
+        landed = verb_dlls_present(root, verb)
+        if landed:
+            installed.append(verb)
+            bus.warn(
+                f"{verb}: installer adımı hata verdi (exit {code}) ama gerekli "
+                f"DLL'ler prefix'e yerleşmiş ({', '.join(landed)}). Başarılı "
+                "sayılıyor; doğrulama adımındaki import kontrolü kesin cevabı "
+                "verecek."
+            )
         else:
             bus.error(
-                f"{verb} kurulamadı (exit {code}). Log'un üstündeki winetricks "
-                "çıktısına bak; genelde ağ erişimi ya da sürüm değişikliğidir."
+                f"{verb} kurulamadı (exit {code}) ve beklenen DLL'ler prefix'te "
+                "yok. Log'un üstündeki winetricks çıktısına bak; genelde ağ "
+                "erişimi ya da sürüm değişikliğidir."
             )
     return installed
+
+
+# Bir verb'in "gercekten kuruldu mu" kontrolu icin aradigimiz imza dosyalari.
+VERB_SIGNATURE_DLLS = {
+    "vcrun2022": ("vcruntime140.dll", "msvcp140.dll"),
+    "vcrun2019": ("vcruntime140.dll", "msvcp140.dll"),
+    "vcrun2017": ("vcruntime140.dll", "msvcp140.dll"),
+    "vcrun2015": ("vcruntime140.dll", "msvcp140.dll"),
+    "vcrun2013": ("msvcr120.dll", "msvcp120.dll"),
+    "vcrun2010": ("msvcr100.dll", "msvcp100.dll"),
+    "vcrun2008": ("msvcr90.dll",),
+    "vcrun2005": ("msvcr80.dll",),
+    "d3dx9": ("d3dx9_43.dll",),
+    "dotnet48": ("mscoree.dll",),
+}
+
+
+def verb_dlls_present(root: str, verb: str) -> list[str]:
+    """Verb'in imza DLL'lerinden prefix'te bulunanlari dondurur.
+
+    Hepsi bulunmadiysa kismi kurulum sayilmaz ve bos liste doner.
+    """
+    names = VERB_SIGNATURE_DLLS.get(verb)
+    if not names:
+        return []
+    windows = os.path.join(root, "home", RFS_USER, ".wine", "drive_c", "windows")
+    found: list[str] = []
+    for name in names:
+        for sub in ("system32", "syswow64"):
+            if os.path.isfile(os.path.join(windows, sub, name)):
+                found.append(f"{sub}/{name}")
+                break
+    return found if len(found) == len(names) else []
 
 
 def smoke_test(root: str, exec_unix_path: str, bus: EventBus, *, seconds: int = 25,

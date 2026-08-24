@@ -123,10 +123,27 @@ def link_android_path(real_root: str, app_id: str, bus: EventBus) -> str:
     return link
 
 
+# Upstream'in rootfs.tzst'inde ./home/ ve ./tmp/ BOS DIZIN olarak duruyor
+# (arsivde toplam 2 girdi). Container ve gecici dosyalar oraya SONRADAN,
+# cihazda olusuyor.
+#
+# Biz build sirasinda ayni koku kullandigimiz icin repack aninda home/ altinda
+# container (oyun + 1394 ortak DLL, ~318MB) ve tmp/ altinda winetricks onbellegi
+# duruyor. Bunlari haric tutmazsak oyun APK'ya IKI KEZ giriyor: bir kez
+# rootfs.tzst icinde, bir kez de game_payload.tzst icinde.
+# Olcum (gercek build): haric tutmadan 176.5 MB, tutunca 62.9 MB.
+# Referans: upstream'in kendi rootfs.tzst'i 62.2 MB -- yani artik birebir.
+REPACK_EXCLUDES = ("./home/*", "./tmp/*")
+
+
 def repack(root: str, out_file: str, bus: EventBus, *, level: int = 19) -> str:
-    """Yamalanmış rootfs'i tekrar rootfs.tzst olarak paketler."""
-    bus.info(f"rootfs yeniden paketleniyor (zstd -{level}, {cpu_count()} thread)…")
+    """Yamalanmış rootfs'i tekrar rootfs.tzst olarak paketler.
+
+    home/ ve tmp/ dizinleri korunur ama İÇERİKLERİ paketlenmez — upstream'in
+    rootfs.tzst'i de tam olarak böyle.
+    """
+    bus.info(f"rootfs yeniden paketleniyor (zstd -{level}, home/ ve tmp/ hariç)…")
     rm_rf(out_file)
-    tar_zstd_create(root, out_file, bus, level=level)
+    tar_zstd_create(root, out_file, bus, level=level, exclude=REPACK_EXCLUDES)
     bus.ok(f"rootfs.tzst hazır: {human(os.path.getsize(out_file))}")
     return out_file

@@ -18,7 +18,7 @@ import shutil
 
 from .bus import EventBus
 from .config import WINLATOR_APP_PIN, WINLATOR_APP_REPO
-from .util import CommandError, human, rm_rf, run
+from .util import CommandError, cpu_count, human, memory_limit_bytes, rm_rf, run
 
 # Bu modülün bulunduğu paketin bir üstü = Space kökü
 SPACE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -171,7 +171,7 @@ def _apply_patches(project: str, bus: EventBus) -> None:
 
 
 def _place_artifacts(project: str, artifacts: dict[str, str], config_path: str,
-                     bus: EventBus) -> None:
+                     bus: EventBus) -> int:
     assets = os.path.join(project, "app", "src", "main", "assets")
     gameport = os.path.join(assets, "gameport")
     os.makedirs(gameport, exist_ok=True)
@@ -191,11 +191,13 @@ def _place_artifacts(project: str, artifacts: dict[str, str], config_path: str,
         shutil.copy2(artifacts["controls"], os.path.join(profiles, "controls-1.icp"))
         bus.info("  özel input profili yerleştirildi")
 
-    total = sum(
+    sizes = [
         os.path.getsize(os.path.join(dp, f))
         for dp, _d, fs in os.walk(assets) for f in fs
-    )
-    bus.ok(f"Asset'ler yerleşti (toplam {human(total)}).")
+    ]
+    total, largest = sum(sizes), (max(sizes) if sizes else 0)
+    bus.ok(f"Asset'ler yerleşti (toplam {human(total)}, en büyük {human(largest)}).")
+    return largest
 
 
 def _write_port_properties(project: str, config_path: str, bus: EventBus) -> None:
@@ -220,15 +222,82 @@ def _write_local_properties(project: str) -> None:
         fh.write(f"sdk.dir={_sdk_root()}\n")
 
 
+# Gradle'in varsayilan daemon heap'i 512 MB. AGP'nin CompressAssetsTask'i her
+# asset'i Files.readAllBytes ile TAMAMEN bellege okuyor (zipflinger BytesSource).
+# Bizim asset'lerimiz devasa (rootfs.tzst + game_payload.tzst yuzlerce MB), ve
+# bu is worker havuzunda PARALEL kosuyor. 512 MB heap + cok sayida worker =
+# kesin OutOfMemoryError.
+#
+# GRADLE_OPTS bunu COZMEZ: o yalnizca Gradle istemci JVM'ine uygulanir, build
+# ise daemon/forked JVM'de kosar ve oradaki heap'i org.gradle.jvmargs belirler.
+# Bu yuzden gradle.properties'i burada uretiyoruz.
+MIN_HEAP_MB = 2048
+MAX_HEAP_MB = 8192
+HEAP_HEADROOM_MB = 2048          # JVM disi kullanim + NDK/CMake surecleri icin
+
+
+def _heap_mb() -> int:
+    limit = memory_limit_bytes()
+    if not limit:
+        return 4096
+    usable = int(limit / (1024 * 1024)) - HEAP_HEADROOM_MB
+    return max(MIN_HEAP_MB, min(MAX_HEAP_MB, usable))
+
+
+def _max_workers(asset_bytes: int, heap_mb: int) -> int:
+    """Paralel worker tavani.
+
+    Her CompressAssets worker'i en buyuk asset kadar bellek tutabilir; heap'i
+    asmayacak sayida worker'a izin veriyoruz. Ayrica CPU sayisini asmiyoruz.
+    """
+    per_worker_mb = max(64, int(asset_bytes / (1024 * 1024)))
+    by_memory = max(1, (heap_mb // 2) // per_worker_mb)
+    return max(1, min(cpu_count(), by_memory, 8))
+
+
+def _write_gradle_properties(project: str, largest_asset: int, bus: EventBus) -> int:
+    """Upstream gradle.properties'i koruyarak bellek ayarlarini ekler."""
+    path = os.path.join(project, "gradle.properties")
+    existing: list[str] = []
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as fh:
+            existing = [
+                line.rstrip("\n") for line in fh
+                if not line.startswith(("org.gradle.jvmargs", "org.gradle.workers.max",
+                                        "org.gradle.daemon", "org.gradle.parallel"))
+            ]
+
+    heap_mb = _heap_mb()
+    workers = _max_workers(largest_asset, heap_mb)
+
+    added = [
+        "",
+        "# --- tek-oyun port araci tarafindan eklendi ---",
+        f"org.gradle.jvmargs=-Xmx{heap_mb}m -XX:MaxMetaspaceSize=1g "
+        "-Dfile.encoding=UTF-8",
+        f"org.gradle.workers.max={workers}",
+        "org.gradle.daemon=false",
+    ]
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(existing + added) + "\n")
+
+    bus.info(
+        f"Gradle bellek ayari: heap {heap_mb} MB, {workers} worker "
+        f"(en buyuk asset {human(largest_asset)}, {cpu_count()} vCPU)."
+    )
+    return workers
+
+
 def _gradle_env(gradle_home: str) -> dict[str, str]:
     sdk = _sdk_root()
     return {
         "ANDROID_HOME": sdk,
         "ANDROID_SDK_ROOT": sdk,
         "GRADLE_USER_HOME": gradle_home,
-        # Space'te 32GB RAM var; Gradle ve Kotlin derleyicisine yeterli alan
-        # verilmezse büyük Java kaynağında OOM'a düşebiliyor.
-        "GRADLE_OPTS": "-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8",
+        # NOT: GRADLE_OPTS yalnizca Gradle ISTEMCI JVM'ine uygulanir; build'in
+        # kostugu JVM'in heap'ini org.gradle.jvmargs belirler ve onu
+        # _write_gradle_properties() yaziyor. Burasi sadece istemci icin.
+        "GRADLE_OPTS": "-Xmx1g -Dfile.encoding=UTF-8",
         "JAVA_TOOL_OPTIONS": "",
         "TERM": "dumb",
     }
@@ -255,9 +324,10 @@ def build(
     _apply_patches(project, bus)
 
     bus.info("AŞAMA A çıktıları assets'e yerleştiriliyor…")
-    _place_artifacts(project, artifacts, config_path, bus)
+    largest_asset = _place_artifacts(project, artifacts, config_path, bus)
     _write_port_properties(project, config_path, bus)
     _write_local_properties(project)
+    workers = _write_gradle_properties(project, largest_asset, bus)
 
     variant = "debug"
     task = "assembleDebug"
@@ -273,6 +343,7 @@ def build(
         [
             "./gradlew", task,
             "--no-daemon", "--console=plain", "--stacktrace",
+            f"--max-workers={workers}",
         ],
         bus,
         cwd=project,

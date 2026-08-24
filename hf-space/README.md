@@ -35,13 +35,29 @@ Sonuç: prefix'i, APK'nın içindeki Wine'ın *ta kendisiyle* üretiyoruz. Ubunt
 | Dosya | Ne işe yarar |
 |---|---|
 | `<Oyun>-debug.apk` | **Kurulmaya hazır APK** (AŞAMA B açıksa) |
-> APK boyutu ≈ 110 MB (Winlator'ın kendi asset'leri) + oyununun delta paketi.
-> `zstd seviyesi`ni düşürürsen rootfs büyür; varsayılan 19'da bırak.
+
+> **APK boyutu** ≈ 80 MB (Winlator'ın kendi asset'leri) + ~63 MB (rootfs)
+> + oyununun delta paketi. `zstd seviyesi`ni düşürürsen rootfs büyür;
+> varsayılan 19'da bırak.
 | `game_payload.tzst` | **Delta paket** — pristine container'a göre değişen her şey |
 | `game_config.json` | Android tarafıyla tek sözleşme (exe yolu, container ayarları) |
 | `rootfs.tzst` | `applicationId` yamalanmış rootfs (varsayılandan farklıysa) |
 | `build_report.json` | Tespit sonuçları, import kontrolü, smoke test çıktısı |
 | `smoke_test.png` | Oyunun Xvfb ekranından alınan görüntü (varsa) |
+
+### Bellek ve boyut ayarları
+
+Konteynerin CPU/bellek limitleri **cgroup'tan** okunur, `os.cpu_count()`'tan
+değil — konteyner içinde `os.cpu_count()` HOST'un çekirdek sayısını döndürür
+(HF'de 64 çıkabiliyor, oysa konteynere çok daha azı verilmiş olur). Buna
+dayanarak:
+
+- Gradle heap'i ve worker sayısı, en büyük asset'in boyutuna göre hesaplanır.
+  AGP'nin `CompressAssetsTask`'i her asset'i tamamen belleğe okuduğu için
+  bu şart; aksi halde büyük oyunlarda `OutOfMemoryError` alınır.
+- zstd worker sayısı 4 ile sınırlanır. **Sıkıştırma oranı için değil,
+  bellek için**: ölçtük, `-T1`/`-T4`/`-T64` birebir aynı boyutu veriyor;
+  ama `--long=27` her worker'a 128 MB pencere ayırtıyor.
 
 ### Neden "delta", tam prefix değil
 

@@ -20,8 +20,67 @@ class CommandError(RuntimeError):
         self.tail = tail
 
 
+def _cgroup_cpu_quota() -> int | None:
+    """Konteynere gerçekten verilen CPU sayısı (cgroup kotası).
+
+    NEDEN GEREKLİ: os.cpu_count() konteyner içinde HOST'un çekirdek sayısını
+    döndürür. HF Space'te bu 64 çıkabiliyor oysa konteynere 8 verilmiş olur.
+    Bu yanlış sayıyla zstd'yi -T64 ile çalıştırmak sıkıştırma oranını
+    bozuyor, Gradle'a 64 worker vermek ise belleği patlatıyordu.
+    """
+    # cgroup v2
+    try:
+        with open("/sys/fs/cgroup/cpu.max", encoding="utf-8") as fh:
+            quota, period = fh.read().split()
+        if quota != "max":
+            return max(1, int(int(quota) / int(period)))
+    except (OSError, ValueError):
+        pass
+    # cgroup v1
+    try:
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", encoding="utf-8") as fh:
+            quota = int(fh.read().strip())
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us", encoding="utf-8") as fh:
+            period = int(fh.read().strip())
+        if quota > 0 and period > 0:
+            return max(1, quota // period)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def cpu_count() -> int:
-    return max(1, os.cpu_count() or 1)
+    """Kullanılabilir CPU sayısı — cgroup kotası ve affinity dikkate alınır."""
+    candidates = []
+    quota = _cgroup_cpu_quota()
+    if quota:
+        candidates.append(quota)
+    try:
+        candidates.append(len(os.sched_getaffinity(0)))
+    except (AttributeError, OSError):
+        pass
+    candidates.append(os.cpu_count() or 1)
+    return max(1, min(candidates))
+
+
+def memory_limit_bytes() -> int | None:
+    """Konteynere verilen bellek limiti (varsa)."""
+    for path in ("/sys/fs/cgroup/memory.max",
+                 "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                raw = fh.read().strip()
+            if raw and raw != "max":
+                value = int(raw)
+                # cgroup v1 "limitsiz" degerini cok buyuk bir sayi olarak verir.
+                if 0 < value < (1 << 62):
+                    return value
+        except (OSError, ValueError):
+            continue
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except (AttributeError, ValueError, OSError):
+        return None
 
 
 def run(
@@ -175,6 +234,21 @@ def dir_size(path: str) -> int:
     return total
 
 
+# zstd worker tavani.
+#
+# ONEMLI: Bu tavan SIKISTIRMA ORANI icin degil, BELLEK icin.
+# Olctuk: ayni girdide -T1, -T4 ve -T64 BIREBIR ayni boyutu verdi; thread
+# sayisi orani degistirmiyor. Ama --long=27 her worker'a 128MB'lik pencere
+# ayirtiyor; 64 vCPU'lu bir makinede -T64 on GB'larca bellek ister ve
+# konteynerde OOM'a yol acar. 4 worker hiz/bellek dengesini koruyor
+# (-T4 87s, -T1 306s -- ayni cikti).
+MAX_ZSTD_THREADS = 4
+
+
+def zstd_threads() -> int:
+    return max(1, min(cpu_count(), MAX_ZSTD_THREADS))
+
+
 def tar_zstd_create(
     src_dir: str,
     out_file: str,
@@ -183,6 +257,7 @@ def tar_zstd_create(
     level: int = 19,
     members: Iterable[str] | None = None,
     threads: int | None = None,
+    exclude: Iterable[str] | None = None,
 ) -> None:
     """Dizini .tzst olarak paketler.
 
@@ -191,9 +266,12 @@ def tar_zstd_create(
     kullanılır (Space 8 vCPU).
     """
     os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
-    nthreads = threads if threads is not None else cpu_count()
+    nthreads = threads if threads is not None else zstd_threads()
     zstd_opts = f"-{level} -T{nthreads} --long=27"
-    cmd = ["tar", "-I", f"zstd {zstd_opts}", "-cf", out_file, "-C", src_dir]
+    cmd = ["tar", "-I", f"zstd {zstd_opts}"]
+    for pattern in exclude or ():
+        cmd += [f"--exclude={pattern}"]
+    cmd += ["-cf", out_file, "-C", src_dir]
     if members is None:
         cmd.append(".")
     else:
