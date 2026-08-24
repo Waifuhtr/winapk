@@ -28,9 +28,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #      (wine binary'sinin kendisi sadece libc ister, ama winex11.drv/winealsa
 #       gibi modüller aşağıdaki kütüphaneleri runtime'da açar.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl wget git jq \
+        ca-certificates curl wget git jq unzip \
+        openjdk-17-jdk-headless \
         python3 python3-pip python3-venv \
-        zstd xz-utils zip unzip p7zip-full cabextract \
+        zstd xz-utils zip p7zip-full cabextract \
         libarchive-tools \
         xvfb x11-utils x11-xserver-utils xauth imagemagick \
         libx11-6 libxext6 libxrender1 libxrandr2 libxi6 libxcursor1 \
@@ -50,6 +51,36 @@ RUN curl -fsSL -o /usr/local/bin/winetricks \
         https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks \
     && chmod +x /usr/local/bin/winetricks
 
+# --- Android SDK + NDK (AŞAMA B: APK derlemesi) -----------------------------
+# Bunlar bilinçli olarak İMAJA GÖMÜLÜ. Runtime'da indirmek, Space her yeniden
+# başladığında ~1.5GB tekrar indirmek demekti; imaj katmanı ise bir kez
+# derlenip HF tarafından yeniden kullanılıyor.
+#
+# NDK sürümü BİREBİR 24.0.8215888 olmalı — Winlator'ın app/build.gradle'ı
+# bu sürümü sabitlemiş durumda (ndkVersion). Farklı sürüm CMake yapısını bozar.
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
+    ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    ANDROID_NDK_VERSION=24.0.8215888
+
+RUN set -eux; \
+    mkdir -p "$ANDROID_HOME/cmdline-tools"; \
+    curl -fsSL -o /tmp/cmdline-tools.zip \
+        https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip; \
+    unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools; \
+    mv /tmp/cmdline-tools/cmdline-tools "$ANDROID_HOME/cmdline-tools/latest"; \
+    rm -rf /tmp/cmdline-tools.zip /tmp/cmdline-tools; \
+    yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null; \
+    "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+        "platforms;android-35" \
+        "build-tools;35.0.0" \
+        "platform-tools" \
+        "cmake;3.22.1" \
+        "ndk;${ANDROID_NDK_VERSION}" > /dev/null; \
+    rm -rf "$ANDROID_HOME/.temp" /root/.android/cache
+
+ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${PATH}"
+
 # --- Uygulama ---------------------------------------------------------------
 WORKDIR /app
 COPY requirements.txt .
@@ -59,6 +90,7 @@ COPY app.py .
 COPY pipeline/ ./pipeline/
 COPY static/ ./static/
 COPY scripts/ ./scripts/
+COPY android/ ./android/
 RUN chmod +x ./scripts/*.sh 2>/dev/null || true
 
 # --- Çalışma dizinleri ------------------------------------------------------
@@ -68,7 +100,7 @@ RUN chmod +x ./scripts/*.sh 2>/dev/null || true
 # yazmıyoruz: /data/data/<appId>/files/rootfs sadece bir SYMLINK olacak,
 # gerçek veri /build altında duracak. (Symlink ile wineserver'ın çalıştığı
 # test edildi.)
-RUN mkdir -p /build /data/data /work/out /work/uploads \
+RUN mkdir -p /build /build/cache/gradle-home /data/data /work/out /work/uploads \
     && chmod -R 777 /build /data /work
 
 ENV WORK_DIR=/work \

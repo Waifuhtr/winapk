@@ -12,6 +12,10 @@ Adımlar (UI'daki ilerleme çubuğu bunlarla eşleşir):
     9  verify    PE import kontrolü + (opsiyonel) smoke test
     10 delta     pristine'e göre farkı çıkar ve paketle
     11 pack      rootfs'i yeniden paketle + config yaz + zip'le
+    12 apk       Winlator kaynagini cek, overlay'i ser, gradlew ile APK uret
+
+12. adim opsiyoneldir (cfg.build_apk). Kapaliysa cikti sadece AŞAMA A
+paketidir ve APK yerelde derlenir.
 """
 from __future__ import annotations
 
@@ -23,7 +27,7 @@ import traceback
 
 from . import container as container_mod
 from . import delta as delta_mod
-from . import gamefiles, gamescan, rootfs as rootfs_mod, wine, winlator_src
+from . import android_build, gamefiles, gamescan, rootfs as rootfs_mod, wine, winlator_src
 from .bus import EventBus
 from .config import (
     BAKED_APP_ID,
@@ -52,6 +56,7 @@ STEPS = [
     ("verify", "Doğrulama"),
     ("delta", "Delta çıkar"),
     ("pack", "Paketle"),
+    ("apk", "APK derle"),
 ]
 SCHEMA_VERSION = 1
 
@@ -235,6 +240,35 @@ def run_build(cfg: BuildConfig, bus: EventBus, cancel=lambda: False) -> dict:
 
     bundle = _make_bundle(cfg, od, artifacts, bus)
     done("pack", human(os.path.getsize(bundle)))
+
+    # --------------------------------------------------------------- 12
+    apk_info: dict | None = None
+    if cfg.build_apk:
+        begin("apk", 11)
+        apk_info = android_build.build(
+            cfg,
+            {
+                "payload": payload_file,
+                "rootfs": rootfs_out,
+                "controls": cfg.controls_icp,
+            },
+            config_file,
+            cache,
+            stage,
+            od,
+            bus,
+        )
+        report["apk"] = {
+            "file": os.path.basename(apk_info["apk"]),
+            "bytes": apk_info["size"],
+            "variant": apk_info["variant"],
+        }
+        delta_mod.write_manifest(report_file, report)
+        done("apk", human(apk_info["size"]))
+    else:
+        bus.step("apk", "skipped", "kapalı")
+        bus.info("APK derlemesi kapalı; çıktı sadece AŞAMA A paketi.")
+
     bus.progress(1.0, "Tamamlandı")
 
     result = {
@@ -249,12 +283,23 @@ def run_build(cfg: BuildConfig, bus: EventBus, cancel=lambda: False) -> dict:
         "smokeTest": smoke,
         "gameName": cfg.game_name,
         "execPathDos": exec_dos,
+        "apk": (
+            {
+                "file": os.path.basename(apk_info["apk"]),
+                "bytes": apk_info["size"],
+                "variant": apk_info["variant"],
+            }
+            if apk_info else None
+        ),
     }
     bus.result(result)
-    bus.ok(
+    summary = (
         f"BUILD TAMAM — {report['durationSeconds']}s, "
         f"payload {human(payload_stats['packed_bytes'])}"
     )
+    if apk_info:
+        summary += f", APK {human(apk_info['size'])}"
+    bus.ok(summary)
     return result
 
 

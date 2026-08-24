@@ -140,6 +140,10 @@ class BuildConfig:
     force_fullscreen: bool = True
     controls_profile: str = "1"
 
+    # --- APK derlemesi (AŞAMA B, Space içinde) ---
+    build_apk: bool = True
+    controls_icp: str = ""              # opsiyonel .icp profil dosyası yolu
+
     # --- paketleme ---
     zstd_level: int = 19
     repack_rootfs: bool = True             # app_id != com.winlator ise zorunlu

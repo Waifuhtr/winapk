@@ -162,6 +162,19 @@
       </label>
     </fieldset>
 
+    <fieldset>
+      <legend>APK derlemesi</legend>
+      <label class="check">
+        <input id="build_apk" type="checkbox" checked />
+        <span>Bitince APK'yı da derle</span>
+      </label>
+      <small class="hint" id="apkHint"></small>
+      <small class="hint">
+        Derleme arka planda sürer — bu sayfayı kapatabilirsin. Geri
+        döndüğünde log ve çıktılar burada bekliyor olur.
+      </small>
+    </fieldset>
+
     <div class="actions">
       <button id="buildBtn" class="primary">Build başlat</button>
       <button id="cancelBtn" class="ghost" disabled>İptal</button>

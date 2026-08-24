@@ -8,6 +8,7 @@ kopyalanabiliyor.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import threading
@@ -18,15 +19,44 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, W
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from pipeline import android_build
 from pipeline.build import STEPS, safe_run_build
 from pipeline.bus import EventBus
 from pipeline.config import BAKED_APP_ID, BOX64_PRESETS, BuildConfig, out_dir, upload_dir
 from pipeline.util import cpu_count, human
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+LOG_PATH = os.path.join(out_dir(), "build_log.jsonl")
+RESULT_PATH = os.path.join(out_dir(), "last_result.json")
+INTERNAL_FILES = frozenset({"build_log.jsonl", "last_result.json"})
+
+os.makedirs(out_dir(), exist_ok=True)
+os.makedirs(upload_dir(), exist_ok=True)
 
 app = FastAPI(title="Winlator Tek-Oyun Port Aracı")
-bus = EventBus()
+# Kalıcı log: build arka planda sürerken tarayıcı kapatılabilsin, hatta Space
+# yeniden başlasa bile geçmiş kaybolmasın.
+bus = EventBus(persist_path=LOG_PATH)
+
+
+def _save_result(result: dict[str, Any] | None) -> None:
+    try:
+        if result is None:
+            if os.path.exists(RESULT_PATH):
+                os.remove(RESULT_PATH)
+            return
+        with open(RESULT_PATH, "w", encoding="utf-8") as fh:
+            json.dump(result, fh, ensure_ascii=False)
+    except OSError:
+        pass
+
+
+def _load_result() -> dict[str, Any] | None:
+    try:
+        with open(RESULT_PATH, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 class BuildState:
@@ -46,6 +76,7 @@ class BuildState:
 
 
 state = BuildState()
+state.last_result = _load_result()
 
 
 # --------------------------------------------------------------------- statik
@@ -77,6 +108,7 @@ async def api_state() -> JSONResponse:
             "hasDatasetToken": bool(
                 os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
             ),
+            "androidReady": _android_ready(),
         },
         "elapsed": round(time.time() - state.started_at, 1) if state.is_running() else 0,
     })
@@ -126,6 +158,7 @@ async def api_build(payload: dict[str, Any]) -> JSONResponse:
         bus.reset()
         state.cancel_requested = False
         state.last_result = None
+        _save_result(None)
         state.running = True
         state.started_at = time.time()
 
@@ -140,6 +173,7 @@ async def api_build(payload: dict[str, Any]) -> JSONResponse:
             try:
                 result = safe_run_build(cfg, bus, lambda: state.cancel_requested)
                 state.last_result = result
+                _save_result(result)
             finally:
                 state.running = False
 
@@ -194,6 +228,22 @@ async def ws(socket: WebSocket) -> None:
 
 
 # ------------------------------------------------------------------- yardımcı
+def _android_ready() -> tuple[bool, str]:
+    """APK derleme ortamı hazır mı? Arayüz bunu kullanıcıya baştan söylüyor."""
+    try:
+        android_build.preflight(_SilentBus())
+        return (True, "")
+    except Exception as exc:  # noqa: BLE001 - mesajı UI'a taşımak istiyoruz
+        return (False, str(exc))
+
+
+class _SilentBus(EventBus):
+    """preflight'ın log basmadan çalıştırılması için."""
+
+    def emit(self, event: dict[str, Any]) -> None:
+        return
+
+
 def _list_artifacts() -> list[dict[str, Any]]:
     od = out_dir()
     if not os.path.isdir(od):
@@ -201,7 +251,10 @@ def _list_artifacts() -> list[dict[str, Any]]:
     items = []
     for name in sorted(os.listdir(od)):
         path = os.path.join(od, name)
-        if not os.path.isfile(path) or name.endswith(".filelist"):
+        # İç dosyalar çıktı listesinde görünmesin: build_log.jsonl makine
+        # formatı (arayüzün kendi "İndir" düğmesi zaten düz metin veriyor),
+        # last_result.json ve .filelist ise sadece durum tutma amaçlı.
+        if not os.path.isfile(path) or name in INTERNAL_FILES or name.endswith(".filelist"):
             continue
         size = os.path.getsize(path)
         items.append({
@@ -210,8 +263,16 @@ def _list_artifacts() -> list[dict[str, Any]]:
             "human": human(size),
             "mtime": os.path.getmtime(path),
         })
-    # Zip'i en üste al — kullanıcının asıl indireceği o.
-    items.sort(key=lambda it: (not it["name"].endswith(".zip"), it["name"]))
+    # APK en üstte, sonra zip — kullanıcının asıl indireceği bunlar.
+    def rank(item: dict[str, Any]) -> tuple[int, str]:
+        name = item["name"]
+        if name.endswith(".apk"):
+            return (0, name)
+        if name.endswith(".zip"):
+            return (1, name)
+        return (2, name)
+
+    items.sort(key=rank)
     return items
 
 
@@ -242,8 +303,6 @@ def _config_from_payload(payload: dict[str, Any]) -> BuildConfig:
 if __name__ == "__main__":
     import uvicorn
 
-    for directory in (out_dir(), upload_dir()):
-        os.makedirs(directory, exist_ok=True)
     uvicorn.run(
         app,
         host="0.0.0.0",

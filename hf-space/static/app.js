@@ -129,8 +129,8 @@ function renderSteps(steps) {
 function applyStep(event) {
   const el = $(`step-${event.key}`);
   if (!el) return;
-  el.classList.remove("running", "done", "failed");
-  el.classList.add(event.status === "running" ? "running" : event.status);
+  el.classList.remove("running", "done", "failed", "skipped");
+  el.classList.add(event.status);
   if (event.detail) {
     el.lastElementChild.textContent =
       `${state.steps.find((s) => s.key === event.key)?.label || event.key} · ${event.detail}`;
@@ -141,7 +141,7 @@ function resetSteps() {
   for (const step of state.steps) {
     const el = $(`step-${step.key}`);
     if (el) {
-      el.classList.remove("running", "done", "failed");
+      el.classList.remove("running", "done", "failed", "skipped");
       el.lastElementChild.textContent = step.label;
     }
   }
@@ -176,6 +176,9 @@ function showResult(result) {
       <dt>Import kontrolü</dt><dd>${result.importsOk
         ? "tüm bağımlılıklar çözüldü"
         : `${missing.length} eksik DLL: ${escapeHtml(missing.slice(0, 6).join(", "))}`}</dd>
+      <dt>APK</dt><dd>${result.apk
+        ? `${escapeHtml(result.apk.file)} — ${(result.apk.bytes / 1048576).toFixed(1)} MB`
+        : "derlenmedi"}</dd>
       <dt>Smoke test</dt><dd>${smoke.ran
         ? (smoke.exited_early
             ? `erken çıktı (exit ${smoke.exit_code})`
@@ -239,7 +242,8 @@ async function refreshArtifacts() {
     host.innerHTML = "";
     for (const item of data.artifacts) {
       const row = document.createElement("div");
-      row.className = "artifact" + (item.name.endsWith(".zip") ? " primary-artifact" : "");
+      const isPrimary = item.name.endsWith(".apk") || item.name.endsWith(".zip");
+      row.className = "artifact" + (isPrimary ? " primary-artifact" : "");
       row.innerHTML = `<span class="name">${escapeHtml(item.name)}</span>
         <span class="size">${item.human}</span>
         <a href="/api/download/${encodeURIComponent(item.name)}" download>İndir</a>`;
@@ -321,8 +325,22 @@ async function init() {
   window.__bakedAppId = data.bakedAppId;
 
   renderSteps(data.steps);
+  const [apkReady, apkReason] = data.host.androidReady || [false, "bilinmiyor"];
   $("hostinfo").innerHTML =
-    `${data.host.cpus} vCPU · HF_TOKEN: ${data.host.hasDatasetToken ? "var" : "yok"}`;
+    `${data.host.cpus} vCPU · HF_TOKEN: ${data.host.hasDatasetToken ? "var" : "yok"}`
+    + ` · APK: ${apkReady ? "hazır" : "yok"}`;
+
+  const apkHint = $("apkHint");
+  if (apkReady) {
+    apkHint.className = "hint ok";
+    apkHint.textContent = "Android SDK + NDK kurulu. İlk derleme Gradle "
+      + "bağımlılıklarını indirir (10-25 dk), sonrakiler önbellekten hızlanır.";
+  } else {
+    apkHint.className = "hint err";
+    apkHint.textContent = "APK derleme ortamı hazır değil: " + apkReason;
+    $("build_apk").checked = false;
+    $("build_apk").disabled = true;
+  }
   $("tokenHint").className = data.host.hasDatasetToken ? "hint ok" : "hint warn";
   $("tokenHint").textContent = data.host.hasDatasetToken
     ? "HF_TOKEN secret'ı tanımlı; private dataset okunabilir."
@@ -449,6 +467,7 @@ document.addEventListener("DOMContentLoaded", () => {
       run_smoke_test: $("run_smoke_test").checked,
       smoke_test_seconds: parseInt($("smoke_test_seconds").value, 10) || 25,
       zstd_level: parseInt($("zstd_level").value, 10) || 19,
+      build_apk: $("build_apk").checked && !$("build_apk").disabled,
     };
 
     $("summary").classList.add("hidden");

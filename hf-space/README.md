@@ -9,11 +9,17 @@ pinned: false
 short_description: Winlator tabanlı tek-oyun Android port'u için Wine prefix hazırlar
 ---
 
-# AŞAMA A — Wine Prefix Hazırlama Space'i
+# Winlator Tek-Oyun Port Aracı — Tam Boru Hattı
 
-Bu Space, Winlator tabanlı **tek-oyuna-özel bir Android APK** üretmenin ilk
-yarısıdır: Windows oyununu bir Wine prefix'ine kurar, doğrular ve Android
-tarafına gömülecek **delta paketini** çıkarır.
+Bu Space, Windows (x86_64) oyununu **tek-oyuna-özel bir Android APK**'ya
+dönüştürür. İki aşama da burada çalışır:
+
+- **AŞAMA A** — Wine prefix hazırlama, doğrulama, delta paketleme
+- **AŞAMA B** — Winlator kaynağını çekip APK'yı derleme (varsayılan açık)
+
+Derleme **arka planda** sürer: tarayıcıyı kapatabilirsin. Geri döndüğünde log
+ve çıktılar burada bekliyor olur (log diske de yazılıyor, Space yeniden
+başlasa bile kaybolmuyor).
 
 ## Neden bu yaklaşım
 
@@ -28,6 +34,9 @@ Sonuç: prefix'i, APK'nın içindeki Wine'ın *ta kendisiyle* üretiyoruz. Ubunt
 
 | Dosya | Ne işe yarar |
 |---|---|
+| `<Oyun>-debug.apk` | **Kurulmaya hazır APK** (AŞAMA B açıksa) |
+> APK boyutu ≈ 110 MB (Winlator'ın kendi asset'leri) + oyununun delta paketi.
+> `zstd seviyesi`ni düşürürsen rootfs büyür; varsayılan 19'da bırak.
 | `game_payload.tzst` | **Delta paket** — pristine container'a göre değişen her şey |
 | `game_config.json` | Android tarafıyla tek sözleşme (exe yolu, container ayarları) |
 | `rootfs.tzst` | `applicationId` yamalanmış rootfs (varsayılandan farklıysa) |
@@ -51,7 +60,21 @@ paketlemek bu ~300 MB'ı APK'da **ikinci kez** taşımak demek.
 ### Donanım
 
 CPU-only yeterlidir; oyun burada **çalıştırılmaz**, sadece kurulur. Öneri:
-**8 vCPU / 32 GB** (paralel sha256 ve `zstd -T0` tüm çekirdekleri kullanır).
+**8 vCPU / 32 GB** (paralel sha256, `zstd -T0` ve Gradle tüm çekirdekleri
+kullanır).
+
+### İmaj boyutu uyarısı
+
+APK derlemesi için imaja **JDK 17 + Android SDK 35 + NDK 24.0.8215888 +
+CMake 3.22.1** gömülü. Bu, imajı ~5 GB büyütür ve ilk Space build'ini
+15-25 dakikaya çıkarır. Bu **tek seferlik** bir maliyet: HF imaj katmanlarını
+önbelleğe alır, sonraki başlatmalar hızlıdır.
+
+NDK sürümü **birebir 24.0.8215888** olmalı — Winlator'ın `app/build.gradle`'ı
+`ndkVersion` ile bunu sabitlemiş; farklı sürüm CMake yapısını bozar.
+
+APK derlemesini istemiyorsan Dockerfile'daki Android SDK katmanını silebilir
+ve arayüzdeki "Bitince APK'yı da derle" kutusunu kapatabilirsin.
 
 ### Secrets (opsiyonel)
 
@@ -65,7 +88,22 @@ Oyun dosyalarını **Dockerfile'a gömme** — imaj public olabilir.
 1. **applicationId** gir. Uzunluk kritiktir; arayüz canlı uyarır.
 2. Oyun arşivini yükle ya da HF Dataset repo'sunu gir.
 3. `Build başlat`. Loglar canlı akar, tek tuşla kopyalanır.
-4. Biten build'in `.zip`'ini indir → AŞAMA B'ye ver.
+4. **Sayfayı kapatabilirsin** — derleme sunucuda sürer.
+5. Bitince çıktı listesinden **`.apk`** dosyasını indir ve cihazına kur.
+   (APK derlemesini kapattıysan `.zip`'i indirip yerelde `android/setup.sh`
+   ile derlersin.)
+
+### Süre beklentisi
+
+| Aşama | Süre |
+|---|---|
+| AŞAMA A (prefix + delta) | ~1-5 dk (oyun boyutuna göre) |
+| AŞAMA B ilk derleme | 5-15 dk (Gradle dağıtımı + bağımlılık indirmesi dahil) |
+| AŞAMA B sonraki derlemeler | 2-5 dk (Gradle önbelleği ısınmış olur) |
+
+> Ölçüm: 8 vCPU'lu bir makinede Gradle'ın kendi raporladığı süre
+> **2 dk 29 sn** (native CMake/NDK derlemesi ve R8 dahil). Buna Gradle
+> dağıtımının ve bağımlılıkların ilk indirilmesi eklenir.
 
 ## applicationId uzunluk kısıtı
 
@@ -86,6 +124,11 @@ Bu yüzden farklı bir `applicationId` istendiğinde rootfs byte-patch'lenir:
 - **Smoke test oynanabilirlik testi değildir.** Space'te GPU yok; amaç
   "prefix bozuk değil ve exe'nin bağımlılıkları çözülüyor" doğrulaması.
   Gerçek performans yalnızca cihazda ölçülür.
+- **APK `debug` varyantı olarak derlenir** ve Gradle'ın otomatik debug
+  anahtarıyla imzalanır. Yandan yükleme (sideload) için sorunsuzdur; mağaza
+  dağıtımı için kendi anahtarınla yeniden imzalaman gerekir (bkz.
+  `NASIL_CALISTIRILIR.md`). Upstream `debug` bloğunda `minifyEnabled true`
+  tanımlı olduğu için bu yine de küçültülmüş bir derlemedir.
 - **Shader cache önceden derlenemez.** Winlator'ın DXVK/Turnip katmanında
   build-time'da doldurulabilecek bir shader cache API'si bulamadım. Mesa'nın
   kendi cache'i (`MESA_SHADER_CACHE_*`) cihaz GPU'suna özeldir; burada

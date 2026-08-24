@@ -20,6 +20,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_ROOT="${BUILD_ROOT:-$HERE/build}"
 PROJECT="$BUILD_ROOT/winlator-app"
 
+# Overlay ve yama tanimlari hf-space altinda duruyor: Space'in APK'yi kendi
+# icinde derleyebilmesi icin oraya tasindi ve TEK KOPYA orada. Bu script de
+# ayni kopyayi kullanir, boylece yerel build ile Space build'i asla ayrismaz.
+OVERLAY_DIR="${OVERLAY_DIR:-$HERE/../hf-space/android/overlay}"
+PATCHES_FILE="${PATCHES_FILE:-$HERE/../hf-space/android/patches.json}"
+
 # Pin'ler — AŞAMA A'daki pipeline/config.py ile AYNI olmalı.
 WINLATOR_APP_REPO="https://github.com/brunodev85/winlator-app.git"
 WINLATOR_APP_PIN="4f55d117fff1542944e5b91f433470445160ce08"
@@ -90,8 +96,13 @@ if [[ -z "$CONTROLS_ICP" && ! -d "$MAIN_REPO/.git" ]]; then
 fi
 
 # ------------------------------------------------------------- 2) overlay
+if [[ ! -d "$OVERLAY_DIR" ]]; then
+    echo "HATA: Overlay bulunamadı: $OVERLAY_DIR" >&2
+    echo "      hf-space/android/overlay klasörünün yanında olması gerekiyor." >&2
+    exit 1
+fi
 say "Tek-oyun katmanı kopyalanıyor"
-cp -a "$HERE/overlay/." "$PROJECT/"
+cp -a "$OVERLAY_DIR/." "$PROJECT/"
 
 # Upstream deposunda gradlew'in calistirma biti YOK; her kullanici
 # "Permission denied" ile karsilasiyor. Burada bir kez duzeltiyoruz.
@@ -99,55 +110,38 @@ chmod +x "$PROJECT/gradlew"
 
 # ------------------------------------------------------------- 3) yamalar
 say "Upstream kaynağına cerrahi yamalar uygulanıyor"
-python3 - "$PROJECT" <<'PY'
-import sys, pathlib
+if [[ ! -f "$PATCHES_FILE" ]]; then
+    echo "HATA: Yama tanımları bulunamadı: $PATCHES_FILE" >&2
+    exit 1
+fi
+# Yamalar patches.json'dan okunur (Space pipeline'i ile ayni kaynak).
+python3 - "$PROJECT" "$PATCHES_FILE" <<'PYEOF'
+import json, pathlib, sys
 
 project = pathlib.Path(sys.argv[1])
-applied, skipped = [], []
+with open(sys.argv[2], encoding="utf-8") as fh:
+    patches = json.load(fh)["patches"]
 
-def patch(rel, anchor, replacement, marker):
-    path = project / rel
+for patch in patches:
+    path = project / patch["file"]
+    if not path.is_file():
+        raise SystemExit(f"HATA: Yamalanacak dosya yok: {patch['file']}")
     text = path.read_text(encoding="utf-8")
-    if marker in text:
-        skipped.append(f"{rel} (zaten yamalı)")
-        return
-    if anchor not in text:
+
+    if patch["marker"] in text:
+        print(f"  atlandi   : {patch['id']} (zaten yamali)")
+        continue
+    if patch["anchor"] not in text:
         raise SystemExit(
-            f"YAMA ÇAPASI BULUNAMADI: {rel}\n"
-            f"  aranan: {anchor!r}\n"
-            "  Upstream pin'i değişmiş olabilir. setup.sh içindeki pin ile\n"
-            "  kaynağı karşılaştır ve yamayı güncelle."
+            f"YAMA CAPASI BULUNAMADI: {patch['id']} ({patch['file']})\n"
+            f"  aranan: {patch['anchor'][:120]}\n"
+            "  Upstream pin'i degismis olabilir. patches.json ile kaynagi\n"
+            "  karsilastir ve yamayi guncelle."
         )
-    path.write_text(text.replace(anchor, replacement, 1), encoding="utf-8")
-    applied.append(rel)
-
-# (a) Oyun ici cekmece menusunu sadelestir: kullanici editor/ayar ekranlarina
-#     ulasamasin. Tek satirlik cagri; menu ogeleri gizlenir, silinmez.
-patch(
-    "app/src/main/java/com/winlator/XServerDisplayActivity.java",
-    "        menu.findItem(R.id.menu_item_logs).setVisible(enableLogs);",
-    "        menu.findItem(R.id.menu_item_logs).setVisible(enableLogs);\n"
-    "        com.winlator.gameport.GamePortMenu.apply(menu);",
-    "GamePortMenu.apply(menu)",
-)
-
-# (b) FileProvider authority'si manifest'te ${applicationId}.FileProvider oldu;
-#     kodda sabit "com.winlator.FileProvider" kalirsa bu yol cagrilirsa
-#     ActivityNotFound/IllegalArgument ile patlar.
-patch(
-    "app/src/main/java/com/winlator/core/FileUtils.java",
-    'FileProvider.getUriForFile(activity, "com.winlator.FileProvider", file)',
-    'FileProvider.getUriForFile(activity, '
-    'activity.getPackageName() + ".FileProvider", file)',
-    'getPackageName() + ".FileProvider"',
-)
-
-for item in applied:
-    print(f"  yamalandı : {item}")
-for item in skipped:
-    print(f"  atlandı   : {item}")
-PY
-
+    path.write_text(text.replace(patch["anchor"], patch["replacement"], 1),
+                    encoding="utf-8")
+    print(f"  yamalandi : {patch['id']} -> {patch['file']}")
+PYEOF
 # ------------------------------------------------- 4) AŞAMA A çıktıları
 say "AŞAMA A çıktıları assets'e yerleştiriliyor"
 ASSETS="$PROJECT/app/src/main/assets"

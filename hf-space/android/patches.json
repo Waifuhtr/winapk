@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "patches": [
+    {
+      "id": "gameport-menu",
+      "file": "app/src/main/java/com/winlator/XServerDisplayActivity.java",
+      "why": "Oyun ici cekmece menusunu sadelestir: kullanici editor/ayar ekranlarina ulasamasin. Menu ogeleri gizlenir, silinmez.",
+      "anchor": "        menu.findItem(R.id.menu_item_logs).setVisible(enableLogs);",
+      "replacement": "        menu.findItem(R.id.menu_item_logs).setVisible(enableLogs);\n        com.winlator.gameport.GamePortMenu.apply(menu);",
+      "marker": "GamePortMenu.apply(menu)"
+    },
+    {
+      "id": "fileprovider-authority",
+      "file": "app/src/main/java/com/winlator/core/FileUtils.java",
+      "why": "FileProvider authority'si manifest'te ${applicationId}.FileProvider oldu; kodda sabit kalirsa bu yol cagrilirsa patlar.",
+      "anchor": "FileProvider.getUriForFile(activity, \"com.winlator.FileProvider\", file)",
+      "replacement": "FileProvider.getUriForFile(activity, activity.getPackageName() + \".FileProvider\", file)",
+      "marker": "getPackageName() + \".FileProvider\""
+    }
+  ]
+}

@@ -1,12 +1,17 @@
 # NASIL ÇALIŞTIRILIR
 
-İki aşama birbirinden bağımsızdır. AŞAMA A bir veri paketi üretir; AŞAMA B onu
-APK'ya gömer.
+**Varsayılan yol: her şey HF Space'te.** Oyun zip'ini yükle, tek tuşla
+APK'yı al. Derleme arka planda sürer; tarayıcıyı kapatabilirsin.
 
 ```
-AŞAMA A (HF Space, Docker)          AŞAMA B (Android, yerel makine)
- oyun.zip ─► Wine prefix ─► delta ──►  setup.sh ─► gradlew ─► game.apk
+             ┌──────────── HF Space (Docker) ────────────┐
+ oyun.zip ──►│  AŞAMA A: Wine prefix ─► delta paketi     │──► game.apk
+             │  AŞAMA B: Winlator kaynağı ─► gradlew     │
+             └───────────────────────────────────────────┘
 ```
+
+İstersen AŞAMA B'yi kapatıp APK'yı yerelde de derleyebilirsin (aşağıda
+"Alternatif" bölümü). İki aşama hâlâ birbirinden bağımsız çalışır.
 
 ---
 
@@ -57,7 +62,7 @@ Kalıcı önbellek istersen (rootfs'i her seferinde indirmesin):
 docker run --rm -p 7860:7860 -v "$PWD/.cache:/build/cache" winlator-port
 ```
 
-### 4. Kullanım
+### 4. Kullanım (tam boru hattı)
 
 | Alan | Not |
 |---|---|
@@ -68,14 +73,50 @@ docker run --rm -p 7860:7860 -v "$PWD/.cache:/build/cache" winlator-port
 | **Box64 preset** | `STABILITY` (Unity için önerilen) |
 | **Exec args** | `-force-gfx-direct` |
 
+| **Bitince APK'yı da derle** | Açık bırak → çıktı doğrudan `.apk` olur |
+
 `Build başlat` → loglar canlı akar. Hata olursa **Kopyala** ile tüm logu
 alabilirsin.
 
-Biten build `winlator-port-<Oyun>.zip` üretir. İndir.
+**Sayfayı kapatabilirsin.** Derleme sunucu tarafında sürer; geri döndüğünde
+log ve çıktılar yerinde olur (log diske yazıldığı için Space yeniden başlasa
+bile kaybolmaz).
+
+Çıktılar:
+
+| Dosya | Ne zaman |
+|---|---|
+| `<Oyun>-debug.apk` | APK derlemesi açıksa — **cihazına kuracağın dosya bu** |
+| `winlator-port-<Oyun>.zip` | Her zaman — yerel derleme için AŞAMA A paketi |
+
+### Süre beklentisi
+
+| Aşama | Süre |
+|---|---|
+| AŞAMA A (prefix + delta) | ~1-5 dk (oyun boyutuna göre) |
+| AŞAMA B ilk derleme | 5-15 dk (Gradle dağıtımı + bağımlılık indirmesi dahil) |
+| AŞAMA B sonraki derlemeler | 2-5 dk (Gradle önbelleği ısınmış olur) |
+
+> Ölçüm: 8 vCPU'lu bir makinede Gradle'ın kendi raporladığı süre
+> **2 dk 29 sn** (native CMake/NDK derlemesi ve R8 dahil). Buna Gradle
+> dağıtımının ve bağımlılıkların ilk indirilmesi eklenir.
+
+### APK'yı kurma
+
+```bash
+adb install -r <Oyun>-debug.apk
+```
+
+ya da APK'yı telefona kopyalayıp dosya yöneticisinden aç ("bilinmeyen
+kaynaklardan yükleme" izni gerekir).
 
 ---
 
-## AŞAMA B — Android
+## Alternatif — AŞAMA B'yi yerelde derlemek
+
+Arayüzde "Bitince APK'yı da derle" kutusunu **kapat**, `.zip`'i indir ve
+aşağıdaki adımları izle. Bu yol, kendi imzalama anahtarını kullanmak
+istediğinde de gereklidir.
 
 ### Gereksinimler
 
@@ -156,13 +197,21 @@ oyununa benzeyen bir tanesini başlangıç olarak alabilirsin.
 
 ## Sorun giderme
 
+**Arayüzde "APK: yok" yazıyor / kutu kapalı geliyor**
+İmajda Android SDK/NDK kurulamamış. Space'in build logunda `sdkmanager`
+adımına bak. Bu durumda AŞAMA A yine çalışır; APK'yı yerelde derlersin.
+
+**APK derlemesi "YAMA ÇAPASI BULUNAMADI" ile duruyor**
+Upstream pin'i değişmiş. `hf-space/android/patches.json` içindeki çapayı
+kaynakla karşılaştırıp güncelle. Script bilerek durur — yanlış yere yazmaz.
+
+**Gradle "SDK location not found" diyor**
+`ANDROID_HOME` ortam değişkeni boş. Space'te Dockerfile bunu ayarlıyor;
+yerelde `local.properties` içine `sdk.dir=...` yaz.
+
 **Build "rootfs içinde gömülü applicationId bulunamadı" diyor**
 Winlator pin'i değişmiş olabilir. `hf-space/pipeline/config.py` içindeki
 `WINLATOR_APP_PIN` ile `android/setup.sh` içindeki pin **aynı olmalı**.
-
-**setup.sh "YAMA ÇAPASI BULUNAMADI" diyor**
-Upstream kaynağı pin'den farklı. Script bilerek durur — yanlış yere yazmaz.
-Pin'i kontrol et ya da yamayı güncelle.
 
 **Import kontrolü eksik DLL bildiriyor**
 Genelde MSVC runtime'dır. AŞAMA A'da `Ek winetricks verb'leri` alanına

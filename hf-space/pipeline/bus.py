@@ -10,6 +10,8 @@ build'in başından itibaren her şeyi görebilsin (canlı log + kopyala butonu)
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import threading
 import time
 from typing import Any
@@ -18,11 +20,56 @@ MAX_BUFFERED_LINES = 20000
 
 
 class EventBus:
-    def __init__(self) -> None:
+    """Olay yayını + isteğe bağlı diske kalıcılık.
+
+    Kalıcılık neden: build arka planda sürerken kullanıcı tarayıcıyı kapatabilir.
+    Sadece bellekte tutarsak Space yeniden başladığında (HF konteyneri
+    yenileyebilir) tüm log kaybolur ve kullanıcı ne olduğunu göremez.
+    Her olay JSONL olarak diske de yazılıyor; sunucu açılışta geri yüklüyor.
+    """
+
+    def __init__(self, persist_path: str | None = None) -> None:
         self._lock = threading.Lock()
         self._subscribers: list[tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = []
         self._history: list[dict[str, Any]] = []
         self._seq = 0
+        self._persist_path = persist_path
+        self._persist_file = None
+        if persist_path:
+            self._open_persist("a")
+            self._load_persisted()
+
+    # ---- kalicilik ----
+    def _open_persist(self, mode: str) -> None:
+        if not self._persist_path:
+            return
+        try:
+            os.makedirs(os.path.dirname(self._persist_path), exist_ok=True)
+            self._persist_file = open(self._persist_path, mode, encoding="utf-8")
+        except OSError:
+            # Disk yazilamiyorsa build'i durdurmaya deger bir sey degil;
+            # sadece kalicilik kapanir.
+            self._persist_file = None
+
+    def _load_persisted(self) -> None:
+        if not self._persist_path or not os.path.isfile(self._persist_path):
+            return
+        try:
+            with open(self._persist_path, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    self._history.append(event)
+                    self._seq = max(self._seq, int(event.get("seq", 0)))
+        except OSError:
+            return
+        if len(self._history) > MAX_BUFFERED_LINES:
+            del self._history[: len(self._history) - MAX_BUFFERED_LINES]
 
     # ---- abone yönetimi (asyncio tarafı) ----
     def subscribe(self) -> asyncio.Queue:
@@ -50,6 +97,12 @@ class EventBus:
                 # Baştan kırp ama kırpıldığını belli et.
                 del self._history[: len(self._history) - MAX_BUFFERED_LINES]
             subscribers = list(self._subscribers)
+            if self._persist_file is not None:
+                try:
+                    self._persist_file.write(json.dumps(event, ensure_ascii=False) + "\n")
+                    self._persist_file.flush()
+                except (OSError, ValueError):
+                    self._persist_file = None
 
         for loop, queue in subscribers:
             try:
@@ -84,6 +137,14 @@ class EventBus:
         self.emit({"type": "result", **payload})
 
     def reset(self) -> None:
+        """Yeni bir build baslarken gecmisi temizler (diskteki dahil)."""
         with self._lock:
             self._history.clear()
             self._seq = 0
+            if self._persist_file is not None:
+                try:
+                    self._persist_file.close()
+                except OSError:
+                    pass
+                self._persist_file = None
+        self._open_persist("w")

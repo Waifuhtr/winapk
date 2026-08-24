@@ -1,4 +1,9 @@
-# AŞAMA B — Android Projesi
+# AŞAMA B — Android Projesi (yerel derleme)
+
+> **Not:** Artık varsayılan yol bu değil. APK, HF Space içinde otomatik
+> derleniyor (`hf-space/pipeline/android_build.py`). Bu klasör, APK'yı
+> **yerelde** derlemek isteyenler için — özellikle kendi imzalama anahtarını
+> kullanacaksan.
 
 AŞAMA A'nın ürettiği delta paketini alıp **tek-oyuna-özel bir APK**'ya
 dönüştürür. Kullanıcı container seçmez, ayar görmez: uygulama açılır,
@@ -20,9 +25,17 @@ yere yazmaz).
 
 ## Yapı
 
+Overlay ve yama tanımları **`hf-space/android/` altında** duruyor — Space'in
+APK'yı kendi içinde derleyebilmesi için oraya taşındı ve **tek kopya** orada.
+Bu script de aynı kopyayı kullanır, böylece yerel build ile Space build'i
+asla ayrışmaz.
+
 ```
 android/
-├── setup.sh                 Projeyi kuran script (klon + overlay + yama + asset)
+└── setup.sh                     Projeyi kuran script
+
+hf-space/android/                (TEK KOPYA — Space de buradan okur)
+├── patches.json                 Upstream'e uygulanan 2 cerrahi yama
 └── overlay/
     ├── build.gradle             kök — Kotlin eklentisi eklendi
     └── app/
@@ -37,6 +50,9 @@ android/
                 ├── GameLauncherActivity.kt  splash + ilerleme + başlatma
                 └── GamePortMenu.kt        oyun içi menü sadeleştirme
 ```
+
+`setup.sh` overlay/yama yollarını `OVERLAY_DIR` ve `PATCHES_FILE` ortam
+değişkenleriyle değiştirebilirsin.
 
 ## Kullanım
 

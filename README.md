@@ -18,13 +18,20 @@ kontrollerle ekranda. Container seçimi yok, ayar menüsü yok, "oyun ekle" yok.
 ```
 .
 ├── NASIL_CALISTIRILIR.md    ← build/test adımları burada
-├── hf-space/                AŞAMA A — Wine prefix hazırlama (Docker + web arayüz)
-└── android/                 AŞAMA B — APK üretimi (Winlator overlay'i)
+├── hf-space/                HF Space — her iki aşama da burada çalışır
+│   ├── pipeline/                AŞAMA A (prefix/delta) + AŞAMA B (APK)
+│   ├── static/                  web arayüzü (canlı log, kopyala)
+│   └── android/                 overlay + patches.json (TEK KOPYA)
+└── android/setup.sh         AŞAMA B'yi yerelde derlemek isteyenler için
 ```
 
-İki aşama bağımsızdır. AŞAMA A'nın çıktısı (delta paketi + config) statik bir
-veri paketi olarak AŞAMA B'ye girer. Android tarafı Wine kurulum mantığını
-**bilmez**; sadece hazır paketi açıp çalıştırır.
+Oyun zip'ini Space'e yükle → tek tuşla `.apk` al. Derleme arka planda sürer,
+tarayıcıyı kapatabilirsin.
+
+İki aşama kod olarak hâlâ bağımsızdır: AŞAMA A'nın çıktısı (delta paketi +
+`game_config.json`) statik bir veri paketidir; Android tarafı Wine kurulum
+mantığını **bilmez**, sadece hazır paketi açıp çalıştırır. İstersen AŞAMA B'yi
+kapatıp APK'yı yerelde derleyebilirsin.
 
 ---
 
