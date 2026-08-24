@@ -1,0 +1,19 @@
+# build ciktilari
+android/build/
+hf-space/__pycache__/
+hf-space/pipeline/__pycache__/
+**/__pycache__/
+*.pyc
+
+# AŞAMA A ciktilari (buyuk ikili dosyalar - depoya girmemeli)
+*.tzst
+*.apk
+game_config.json
+build_report.json
+winlator-port-*.zip
+
+# yerel gelistirme
+.gradle/
+local.properties
+*.keystore
+*.jks

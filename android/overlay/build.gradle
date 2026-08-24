@@ -1,0 +1,23 @@
+// Kök build dosyası — upstream'in üzerine Kotlin eklentisi eklenmiş hâli.
+//
+// Neden Kotlin: Winlator'ın kendi kaynağı %100 Java (269 dosya). Onu Kotlin'e
+// çevirmek gereksiz risk; bu yüzden UPSTREAM KODA HİÇ DOKUNMUYORUZ ve sadece
+// tek-oyun katmanını (com.winlator.gameport) Kotlin yazıyoruz. İkisi aynı
+// modülde sorunsuz derlenir.
+buildscript {
+    repositories {
+        mavenCentral()
+        google()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.4.2'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21'
+    }
+}
+
+allprojects {
+    repositories {
+        mavenCentral()
+        google()
+    }
+}

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tek oyunluk port'un açılış ekranı. Bilinçli olarak sade: kullanıcıya
+     hiçbir seçenek sunulmuyor, sadece ne olduğu ve ne kadar kaldığı. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/gameport_bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingStart="40dp"
+        android:paddingEnd="40dp">
+
+        <ImageView
+            android:id="@+id/IVIcon"
+            android:layout_width="88dp"
+            android:layout_height="88dp"
+            android:layout_marginBottom="22dp"
+            android:src="@mipmap/ic_launcher"
+            android:contentDescription="@null" />
+
+        <TextView
+            android:id="@+id/TVTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/gameport_text"
+            android:textSize="21sp"
+            android:textStyle="bold"
+            android:gravity="center" />
+
+        <TextView
+            android:id="@+id/TVStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="26dp"
+            android:textColor="@color/gameport_muted"
+            android:textSize="14sp"
+            android:gravity="center"
+            android:text="@string/gameport_starting" />
+
+        <ProgressBar
+            android:id="@+id/PBInstall"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="16dp"
+            android:max="100"
+            android:indeterminate="true" />
+
+        <TextView
+            android:id="@+id/TVDetail"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:textColor="@color/gameport_muted"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:visibility="invisible" />
+    </LinearLayout>
+</FrameLayout>

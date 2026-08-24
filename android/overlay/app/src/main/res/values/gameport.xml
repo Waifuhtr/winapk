@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tek oyunluk port'a özgü kaynaklar. Winlator'ın kendi strings.xml'ine
+         dokunmuyoruz ki upstream güncellemeleri çakışmasın. -->
+    <color name="gameport_bg">#0D1117</color>
+    <color name="gameport_text">#E6EDF3</color>
+    <color name="gameport_muted">#8B98A8</color>
+
+    <string name="gameport_starting">Başlatılıyor…</string>
+    <string name="gameport_failed">Başlatılamadı</string>
+    <string name="gameport_percent">%1$d%%</string>
+    <string name="gameport_permission_required">Devam etmek için depolama izni gerekiyor.</string>
+</resources>

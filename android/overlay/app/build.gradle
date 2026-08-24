@@ -1,0 +1,113 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+// Port ayarları AŞAMA A'nın game_config.json'ından türetilir; setup.sh bu
+// dosyayı yazar. Böylece applicationId / etiket / sürüm tek yerden gelir ve
+// Gradle ile JSON birbirinden ayrışmaz.
+def portProps = new Properties()
+def portFile = rootProject.file('port.properties')
+if (portFile.exists()) {
+    portFile.withInputStream { portProps.load(it) }
+}
+def portAppId    = portProps.getProperty('gameport.applicationId', 'com.gameport')
+def portLabel    = portProps.getProperty('gameport.appLabel', 'Game')
+def portVersion  = portProps.getProperty('gameport.versionName', '1.0')
+def portCode     = portProps.getProperty('gameport.versionCode', '1') as Integer
+
+android {
+    // namespace UPSTREAM İLE AYNI KALMALI: R sınıfı ve 269 Java dosyasının
+    // paketi com.winlator. Değiştirmek tüm kaynağı yeniden yazmak demek.
+    // Kimlik ayrımını applicationId ile yapıyoruz.
+    namespace 'com.winlator'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId portAppId
+        minSdkVersion 26
+        // UYARI: targetSdk 28 upstream'den geliyor ve BİLEREK korunuyor.
+        // Winlator'ın rootfs/exec akışı legacy depolama davranışına dayanıyor;
+        // yükseltmek çalışma zamanını bozar. Google Play bu değeri kabul
+        // etmez — mağaza dağıtımı planlıyorsan bu ayrı bir çalışma konusudur.
+        targetSdkVersion 28
+        versionCode portCode
+        versionName portVersion
+
+        // Manifest'te android:label ve FileProvider authority'si bunlardan
+        // besleniyor. Authority'nin applicationId'ye bağlı olması ŞART:
+        // sabit bırakılırsa cihazda gerçek Winlator kuruluyken kurulum
+        // "duplicate provider authority" ile reddedilir.
+        manifestPlaceholders = [
+            gamePortLabel: portLabel,
+        ]
+
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // İmzalama bilinçli olarak tanımlanmadı: anahtarını depoya koyma.
+            // NASIL_CALISTIRILIR.md'de imzalama adımı anlatılıyor.
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    packaging {
+        jniLibs {
+            // Manifest'te extractNativeLibs="true" oldugu icin bununla hizali.
+            useLegacyPackaging = true
+        }
+        resources {
+            excludes += ['META-INF/*.kotlin_module']
+        }
+    }
+
+    aaptOptions {
+        // Asset'ler zaten zstd ile sikistirilmis. APK icinde tekrar deflate
+        // etmek boyutu ~%0 dusurur ama build suresini uzatir ve acilista
+        // gereksiz CPU harcatir. Sikistirmadan saklamak daha hizli okunur.
+        noCompress 'tzst', 'txz', 'zst'
+    }
+
+    lintOptions {
+        checkReleaseBuilds false
+    }
+
+    ndkVersion '24.0.8215888'
+
+    externalNativeBuild {
+        cmake {
+            version '3.22.1'
+            path 'src/main/cpp/CMakeLists.txt'
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.4.0'
+    implementation 'androidx.preference:preference:1.2.1'
+    implementation 'com.google.android.material:material:1.4.0'
+    implementation 'com.github.luben:zstd-jni:1.5.2-3@aar'
+    implementation 'org.tukaani:xz:1.7'
+    implementation 'org.apache.commons:commons-compress:1.20'
+    implementation 'androidx.lifecycle:lifecycle-process:2.5.1'
+
+    // --- tek-oyun katmanı için eklenenler ---
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.2'
+}

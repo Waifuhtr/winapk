@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Winlator Tek-Oyun Port Aracı</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">◤◢</span>
+    <div>
+      <h1>Winlator Tek-Oyun Port Aracı</h1>
+      <p class="sub">AŞAMA A — Wine prefix hazırlama ve delta paketleme</p>
+    </div>
+  </div>
+  <div class="hostinfo" id="hostinfo"></div>
+</header>
+
+<main class="layout">
+  <!-- ------------------------------------------------------- sol: ayarlar -->
+  <section class="panel config">
+    <h2>Yapılandırma</h2>
+
+    <fieldset>
+      <legend>Kimlik</legend>
+
+      <label>
+        <span>applicationId</span>
+        <input id="app_id" type="text" value="com.gameport" spellcheck="false" />
+        <small id="appIdHint" class="hint"></small>
+      </label>
+
+      <label>
+        <span>Oyun adı</span>
+        <input id="game_name" type="text" placeholder="Otomatik tespit için boş bırak" />
+        <small class="hint">Boşsa Unity <code>app.info</code> dosyasından okunur.</small>
+      </label>
+
+      <div class="row">
+        <label>
+          <span>Uygulama etiketi</span>
+          <input id="app_label" type="text" placeholder="Oyun adı" />
+        </label>
+        <label class="narrow">
+          <span>Sürüm</span>
+          <input id="version_name" type="text" value="1.0" />
+        </label>
+        <label class="narrow">
+          <span>Kod</span>
+          <input id="version_code" type="number" value="1" min="1" />
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Oyun kaynağı</legend>
+      <div class="tabs" id="sourceTabs">
+        <button type="button" class="tab active" data-source="upload">Zip yükle</button>
+        <button type="button" class="tab" data-source="dataset">HF Dataset</button>
+      </div>
+
+      <div class="tabpane" data-pane="upload">
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept=".zip,.7z,.tar,.tgz,.tar.gz,.tar.xz,.tar.zst" hidden />
+          <p><strong>Zip'i buraya sürükle</strong> ya da tıkla</p>
+          <p class="muted">Oyunun <code>.exe</code> + <code>_Data</code> klasörünü içeren arşiv</p>
+        </div>
+        <div class="uploadstate" id="uploadState"></div>
+        <div class="progressbar hidden" id="uploadBar"><div></div></div>
+      </div>
+
+      <div class="tabpane hidden" data-pane="dataset">
+        <label>
+          <span>Dataset repo id</span>
+          <input id="dataset_repo" type="text" placeholder="kullanici/oyun-dosyalari" spellcheck="false" />
+        </label>
+        <label>
+          <span>Dosya yolu (opsiyonel)</span>
+          <input id="dataset_file" type="text" placeholder="build/MyGame.zip — boşsa tüm repo" spellcheck="false" />
+        </label>
+        <small class="hint" id="tokenHint"></small>
+      </div>
+
+      <label>
+        <span>Exe yolu (opsiyonel)</span>
+        <input id="exec_path_override" type="text" placeholder="Boşsa Unity düzeninden otomatik bulunur" spellcheck="false" />
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Çalışma zamanı sabitleri</legend>
+      <div class="row">
+        <label>
+          <span>Box64 preset</span>
+          <select id="box64_preset"></select>
+        </label>
+        <label>
+          <span>Ekran boyutu</span>
+          <input id="screen_size" type="text" value="1280x720" />
+        </label>
+      </div>
+      <div class="row">
+        <label>
+          <span>Grafik sürücüsü</span>
+          <select id="graphics_driver">
+            <option value="vortek,gladio">vortek + gladio (tüm cihazlar)</option>
+            <option value="turnip,gladio">turnip + gladio (sadece Adreno, daha hızlı)</option>
+            <option value="zink,gladio">zink + gladio</option>
+            <option value="virgl,gladio">virgl + gladio</option>
+          </select>
+        </label>
+        <label>
+          <span>DX sarmalayıcı</span>
+          <select id="dxwrapper">
+            <option value="dxvk">dxvk</option>
+            <option value="wined3d">wined3d</option>
+            <option value="vkd3d">vkd3d</option>
+            <option value="cnc-ddraw">cnc-ddraw</option>
+          </select>
+        </label>
+      </div>
+      <label>
+        <span>Exec argümanları</span>
+        <input id="exec_args" type="text" value="-force-gfx-direct" spellcheck="false" />
+      </label>
+      <label class="check">
+        <input id="force_fullscreen" type="checkbox" checked />
+        <span>Tam ekrana zorla (<code>forceFullscreen</code>)</span>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Prefix hazırlama</legend>
+      <label class="check">
+        <input id="auto_redist" type="checkbox" checked />
+        <span>Gerekli redistributable'ı otomatik seç</span>
+      </label>
+      <label>
+        <span>Ek winetricks verb'leri</span>
+        <input id="winetricks_verbs" type="text" placeholder="vcrun2022, dotnet48 — virgülle ayır" spellcheck="false" />
+        <small class="hint">Boş bırak; otomatik tespit MSVC runtime eksikse <code>vcrun2022</code> ekler.</small>
+      </label>
+      <label class="check">
+        <input id="prefix_cleanup" type="checkbox" checked />
+        <span>Gereksiz Wine bileşenlerini temizle</span>
+      </label>
+      <div class="row">
+        <label class="check">
+          <input id="run_smoke_test" type="checkbox" checked />
+          <span>Smoke test çalıştır</span>
+        </label>
+        <label class="narrow">
+          <span>Süre (sn)</span>
+          <input id="smoke_test_seconds" type="number" value="25" min="5" max="180" />
+        </label>
+      </div>
+      <label class="narrow">
+        <span>zstd seviyesi</span>
+        <input id="zstd_level" type="number" value="19" min="1" max="19" />
+      </label>
+    </fieldset>
+
+    <div class="actions">
+      <button id="buildBtn" class="primary">Build başlat</button>
+      <button id="cancelBtn" class="ghost" disabled>İptal</button>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------- sağ: log + çıktı -->
+  <section class="panel output">
+    <div class="steps" id="steps"></div>
+
+    <div class="progressbar big"><div id="mainProgress"></div></div>
+    <div class="statusline"><span id="statusText">Hazır.</span><span id="elapsed"></span></div>
+
+    <div class="logheader">
+      <h2>Canlı log</h2>
+      <div class="logtools">
+        <label class="check inline">
+          <input id="autoscroll" type="checkbox" checked /><span>Oto-kaydır</span>
+        </label>
+        <label class="check inline">
+          <input id="onlyProblems" type="checkbox" /><span>Sadece hata/uyarı</span>
+        </label>
+        <button id="copyBtn" class="ghost small">Kopyala</button>
+        <button id="downloadLogBtn" class="ghost small">İndir</button>
+        <button id="clearBtn" class="ghost small">Temizle</button>
+      </div>
+    </div>
+    <pre id="log" class="log"></pre>
+
+    <div class="artifacts">
+      <h2>Çıktılar</h2>
+      <div id="artifactList" class="artifactlist muted">Henüz çıktı yok.</div>
+    </div>
+
+    <div id="summary" class="summary hidden"></div>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
