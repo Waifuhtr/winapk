@@ -48,6 +48,28 @@ def diff(baseline: dict[str, str], current: dict[str, str]) -> tuple[list[str], 
     return changed, removed
 
 
+def _with_parent_dirs(changed: list[str]) -> list[str]:
+    """Değişen dosyaların üst dizinlerini de üye listesine ekler.
+
+    NEDEN ŞART: Winlator'ın TarCompressorUtils.extract() metodu mkdirs()'i
+    YALNIZCA dizin girdileri için çağırıyor; normal dosyalarda doğrudan
+    FileOutputStream açıyor. Arşivde dizin girdisi yoksa, container'da
+    bulunmayan bir klasöre (örn. .wine/drive_c/Games/<Oyun>/) yazarken
+    FileNotFoundException alıyor ve extract() false dönüyor.
+
+    hash_tree() yalnızca dosyaları gezdiği için üye listesinde dizin
+    olmuyordu; burada ekliyoruz. Sıralama önemli: tar üyeleri verilen
+    sırayla işler, bu yüzden dizinler önce ve sözlük sırasında geliyor
+    (sözlük sırası üst dizinin alt dizinden önce gelmesini garanti eder).
+    """
+    directories: set[str] = set()
+    for rel in changed:
+        parts = rel.replace(os.sep, "/").split("/")[:-1]
+        for depth in range(1, len(parts) + 1):
+            directories.add("/".join(parts[:depth]))
+    return sorted(directories) + changed
+
+
 def pack(container_root: str, changed: list[str], removed: list[str], out_file: str,
          bus: EventBus, *, level: int = 19) -> dict:
     """Delta'yı game_payload.tzst olarak paketler.
@@ -64,11 +86,13 @@ def pack(container_root: str, changed: list[str], removed: list[str], out_file: 
             except OSError:
                 pass
 
+    members = _with_parent_dirs(changed)
+    dir_count = len(members) - len(changed)
     bus.info(
-        f"Delta paketleniyor: {len(changed)} dosya ({human(total_bytes)} ham), "
-        f"{len(removed)} silinecek."
+        f"Delta paketleniyor: {len(changed)} dosya ({human(total_bytes)} ham) "
+        f"+ {dir_count} dizin girdisi, {len(removed)} silinecek."
     )
-    tar_zstd_create(container_root, out_file, bus, level=level, members=changed)
+    tar_zstd_create(container_root, out_file, bus, level=level, members=members)
     packed = os.path.getsize(out_file)
     ratio = (packed / total_bytes * 100) if total_bytes else 0
     bus.ok(f"game_payload.tzst: {human(packed)} (ham verinin %{ratio:.1f}'i)")

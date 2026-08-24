@@ -97,13 +97,19 @@ class GameInstaller(private val context: Context) {
         val ok = TarCompressorUtils.extract(
             TarCompressorUtils.Type.ZSTD, context, RootFSInstaller.FILENAME, rootDir,
         ) { file, size ->
+            file.parentFile?.let { if (!it.isDirectory) it.mkdirs() }
             if (size > 0 && total > 0) {
                 written += size
                 emit(Phase.InstallingRootFS, (written.toFloat() / total).coerceIn(0f, 1f))
             }
             file
         }
-        if (!ok) throw IllegalStateException("Sistem dosyaları açılamadı (rootfs).")
+        if (!ok) {
+            throw IllegalStateException(
+                "Sistem dosyaları açılamadı (rootfs). Cihazda yeterli boş alan " +
+                    "olmayabilir."
+            )
+        }
         rootFS.createRFSVersionFile(RootFSInstaller.LATEST_VERSION.toInt())
     }
 
@@ -179,13 +185,25 @@ class GameInstaller(private val context: Context) {
         val ok = TarCompressorUtils.extract(
             TarCompressorUtils.Type.ZSTD, context, asset, target,
         ) { file, size ->
+            // Winlator'in cikarici mkdirs()'i YALNIZCA dizin girdileri icin
+            // cagiriyor; normal dosyalarda dogrudan FileOutputStream aciyor.
+            // Ust dizin yoksa FileNotFoundException aliniyor ve extract()
+            // sessizce false donuyor. Payload artik dizin girdileri de
+            // tasiyor, ama burada da garantiye aliyoruz: bu dinleyici dosya
+            // yazilmadan ONCE cagriliyor, yani dogru kanca burasi.
+            file.parentFile?.let { if (!it.isDirectory) it.mkdirs() }
             if (size > 0 && total > 0) {
                 written += size
                 emit(Phase.ApplyingPayload, (written.toFloat() / total).coerceIn(0f, 1f))
             }
             file
         }
-        if (!ok) throw IllegalStateException("Oyun dosyaları açılamadı (payload).")
+        if (!ok) {
+            throw IllegalStateException(
+                "Oyun dosyaları açılamadı (payload). Arşiv bozuk olabilir ya da " +
+                    "cihazda yeterli boş alan yok."
+            )
+        }
 
         // AŞAMA A'da prefix'ten silinenler burada da silinmeli.
         config.removedPaths.forEach { relative ->
